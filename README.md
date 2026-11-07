@@ -4,6 +4,8 @@ ChickenDetector finds and counts chickens in images, videos and live webcam stre
 
 The project contains everything needed to go from your own photos to a working detector: scripts to prepare and label a dataset, a training pipeline based on YOLO11, and a fast C++ application that runs the trained model with OpenCV. The C++ application works without Python and does not need an internet connection.
 
+The repository contains source code only. No images and no trained models are included. You train the detector on photos of your own chickens, which also gives the best results, because the model learns exactly your coop, your lighting and your birds.
+
 
 ## Features
 
@@ -85,7 +87,7 @@ CMake looks for vcpkg in the folder set in the `VCPKG_ROOT` environment variable
 
 ## Preparing your own dataset
 
-The repository does not include images. To train a model, you need your own photos. The included model was trained on 116 photos with 461 chickens, taken inside a chicken coop, mostly in low light.
+To train a model, you need your own photos. As a reference, the results in this README come from a model trained on 116 photos with 461 chickens, taken inside a chicken coop, mostly in low light. Around 100 photos are a good starting point. More photos in different situations improve the results further.
 
 ### Preparing the photos
 
@@ -126,7 +128,7 @@ The first script checks every label file and stops with an error message if some
 
 The second script trains the model. When it is finished, you will find two files in the `models` folder: `chicken.pt` and `chicken.onnx`. Charts and example results from the training are saved in `training/runs/chicken`.
 
-The included model was trained with these settings:
+The reference model was trained with these settings:
 
     .venv\Scripts\python.exe training\train.py --epochs 250 --patience 60 --batch 16
 
@@ -166,7 +168,7 @@ In the window, press any key to go to the next image. Press Esc or Q to quit.
 
 ## Results
 
-The included model was tested on 23 validation photos. Speed was measured on a CPU with 8 threads, without a graphics card.
+These are the results of the reference model, tested on 23 validation photos. Speed was measured on a CPU with 8 threads, without a graphics card. Your results will depend on your photos and your hardware.
 
 - Input size 640: 118 ms per image (about 8 frames per second), mAP50 of 0.85
 - Input size 416: 53 ms per image (about 19 frames per second), mAP50 of 0.86
@@ -200,7 +202,7 @@ Almost all of the processing time is spent inside the neural network itself. The
 ## Known limitations
 
 - Only chickens as a whole are detected. Individual birds are not recognised.
-- The included model was trained in a single chicken coop and may work less well in very different surroundings.
+- A model only works well in surroundings similar to its training photos. A model trained in one coop may perform worse in a very different place.
 - Chickens sitting closely together, for example on a perch, are sometimes detected as one or missed.
 - Very dark or blurry images reduce accuracy.
 - So far the project has only been tested on Windows.
@@ -212,7 +214,13 @@ Almost all of the processing time is spent inside the neural network itself. The
 - Faster detection with ONNX Runtime
 - Logging the number of chickens over time
 - Support for Linux and Raspberry Pi
-- Trained models available for download
+
+
+## Contributing
+
+Improvements are welcome. If you have fixed a bug, made the detector faster or added a useful feature, feel free to open a pull request. For larger changes, please open an issue first so we can discuss the idea.
+
+If you train the detector on your own chickens, I am also happy to hear how well it works in your setup.
 
 
 ## License
