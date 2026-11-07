@@ -18,11 +18,13 @@ training/*.log
 training/train_log.txt
 runs/
 
-# Models (distributed via GitHub Releases, not in the repository)
-models/*
-!models/.gitkeep
+# Models: only the trained chicken models are part of the repository
 *.pt
 *.onnx
+!models/chicken.pt
+!models/chicken.onnx
+!models/chicken_416.onnx
+!models/chicken_320.onnx
 
 # Detector output
 results/

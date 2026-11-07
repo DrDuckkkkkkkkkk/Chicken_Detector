@@ -32,7 +32,8 @@ def disable_telemetry() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Huehner-Detektor trainieren")
-    ap.add_argument("--model", default="yolo11n.pt", help="Startmodell (yolo11n/s/m.pt)")
+    ap.add_argument("--model", default="yolo11n.pt",
+                    help="Startmodell: yolo11n/s/m.pt (neu) oder models/chicken.pt (vorhandenes Modell weitertrainieren)")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--imgsz", type=int, default=640, help="Bildgroesse (Vielfaches von 32)")
     ap.add_argument("--batch", type=int, default=8)
@@ -86,6 +87,12 @@ def main() -> int:
     # opset 12 + simplify: wird von OpenCV DNN zuverlaessig geladen. Feste Eingabegroesse = schneller.
     onnx_path = best_model.export(format="onnx", imgsz=args.imgsz, opset=12, simplify=True, dynamic=False)
     shutil.copy2(onnx_path, MODELS / "chicken.onnx")
+
+    # Lokale Pfade (Benutzername) und Trainingsballast aus den Modelldateien entfernen
+    from sanitize_model import sanitize
+
+    sanitize(MODELS / "chicken.pt")
+    sanitize(MODELS / "chicken.onnx")
     print(f"Modelle gespeichert in {MODELS}  (C++: --size {args.imgsz})")
     return 0
 

@@ -40,6 +40,10 @@ def main() -> int:
         shutil.copy2(pt, tmp_pt)
         onnx_path = YOLO(str(tmp_pt)).export(format="onnx", imgsz=args.imgsz, opset=12, simplify=True, dynamic=False)
         shutil.move(onnx_path, target)
+
+    from sanitize_model import sanitize
+
+    sanitize(target)  # lokale Pfade aus den Metadaten entfernen
     print(f"Gespeichert: {target}  (C++: --size {args.imgsz})")
     return 0
 
