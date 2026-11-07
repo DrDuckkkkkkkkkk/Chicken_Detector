@@ -3,6 +3,14 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-07
+
+### Added
+
+- Trained chicken models in `models/` (input sizes 640, 416 and 320), ready to use without training
+- `chicken.pt` for continuing training with your own photos (`train.py --model models\chicken.pt`)
+- `sanitize_model.py`, which removes local file paths from model files; runs automatically after training and export
+
 ## [1.0.0] - 2026-11-07
 
 ### Added

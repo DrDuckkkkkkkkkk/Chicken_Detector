@@ -4,11 +4,14 @@ ChickenDetector finds and counts chickens in images, videos and live webcam stre
 
 The project contains everything needed to go from your own photos to a working detector: scripts to prepare and label a dataset, a training pipeline based on YOLO11, and a fast C++ application that runs the trained model with OpenCV. The C++ application works without Python and does not need an internet connection.
 
-The repository contains source code only. No images and no trained models are included. You train the detector on photos of your own chickens, which also gives the best results, because the model learns exactly your coop, your lighting and your birds.
+A trained model is included, so you can start detecting chickens right after building the application. The training photos themselves are not part of the repository.
+
+The included model works best in conditions similar to the ones it was trained in: an indoor chicken coop, mostly in low light. For the best results in your own setup, you can continue training it with photos of your own chickens. The model then learns your coop, your lighting and your birds.
 
 
 ## Features
 
+- Ready to use: a trained chicken model is included
 - Detects chickens in single images, whole folders, video files and webcam streams
 - Draws a box with a confidence score around every chicken and shows the total count
 - Saves annotated images and videos
@@ -16,6 +19,18 @@ The repository contains source code only. No images and no trained models are in
 - Supports several model sizes, so you can choose between accuracy and speed
 - Checks your labels for errors before training
 - Prepares phone photos automatically (rotation, size, removal of location data)
+- The included model can be trained further with your own photos
+
+
+## Quick start
+
+If you only want to detect chickens, you do not need Python. Install OpenCV, build the application as described under Installation, and run it with the included model:
+
+    build\Release\ChickenDetector.exe models\chicken_416.onnx photo.jpg --size 416
+
+For a live webcam:
+
+    build\Release\ChickenDetector.exe models\chicken_320.onnx 0 --size 320
 
 
 ## How it works
@@ -40,12 +55,17 @@ The repository contains source code only. No images and no trained models are in
         data.yaml           dataset settings for training
         train.py            trains the model and exports it
         export.py           exports the model with a different input size
+        sanitize_model.py   removes local paths from model files
     src/
         Detector.h          detection logic
         main.cpp            command line application
-    models/                 trained models are saved here
+    models/
+        chicken.pt          trained model, used for further training
+        chicken.onnx        model for the application, input size 640
+        chicken_416.onnx    model for the application, input size 416
+        chicken_320.onnx    model for the application, input size 320
 
-Images, labels, trained models and build output are not part of the repository.
+Images, labels and build output are not part of the repository.
 
 
 ## Requirements
@@ -53,8 +73,8 @@ Images, labels, trained models and build output are not part of the repository.
 - Windows 10 or 11, 64-bit
 - Visual Studio 2022 or newer with the "Desktop development with C++" workload
 - vcpkg for installing OpenCV
-- Python 3.10 or newer for training
-- A separate Python 3.9 environment for labelImg
+- Python 3.10 or newer, only needed for training
+- A separate Python 3.9 environment for labelImg, only needed for labelling
 
 A graphics card is not required. All results below were measured on a normal CPU. If an NVIDIA graphics card is available, training uses it automatically.
 
@@ -70,7 +90,7 @@ Install OpenCV with vcpkg:
 
     vcpkg install opencv4[dnn,highgui,ffmpeg]:x64-windows
 
-Set up Python for training:
+Set up Python (only needed if you want to train):
 
     python -m venv .venv
     .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -87,7 +107,7 @@ CMake looks for vcpkg in the folder set in the `VCPKG_ROOT` environment variable
 
 ## Preparing your own dataset
 
-To train a model, you need your own photos. As a reference, the results in this README come from a model trained on 116 photos with 461 chickens, taken inside a chicken coop, mostly in low light. Around 100 photos are a good starting point. More photos in different situations improve the results further.
+To improve the model for your own chickens, you need your own photos. The included model was trained on 116 photos with 461 chickens. When training a new model from scratch, around 100 photos are a good starting point. When continuing to train the included model, fewer photos can already make a noticeable difference.
 
 ### Preparing the photos
 
@@ -126,13 +146,21 @@ Some tips for good results:
 
 The first script checks every label file and stops with an error message if something is wrong. It then puts 80 percent of the images into the training set and 20 percent into the validation set. The split is the same every time you run it.
 
-The second script trains the model. When it is finished, you will find two files in the `models` folder: `chicken.pt` and `chicken.onnx`. Charts and example results from the training are saved in `training/runs/chicken`.
+The second script trains the model. When it is finished, `chicken.pt` and `chicken.onnx` in the `models` folder are replaced with the new model. Charts and example results from the training are saved in `training/runs/chicken`.
 
-The reference model was trained with these settings:
+There are two ways to train.
+
+Continue training the included model. This is the recommended way if you want the detector to work better with your own chickens. The model keeps what it has already learned and adapts to your photos:
+
+    .venv\Scripts\python.exe training\train.py --model models\chicken.pt --epochs 100
+
+Train a new model from scratch, starting from the general YOLO11 model. The base model is downloaded automatically on the first run. The included model was trained this way:
 
     .venv\Scripts\python.exe training\train.py --epochs 250 --patience 60 --batch 16
 
 Other useful options are `--model yolo11s.pt` for a larger and more accurate, but slower model, and `--imgsz` to change the image size used for training.
+
+Tip: make a copy of the `models` folder before training, so you can go back to the previous model if the new one does not perform better.
 
 A smaller and faster model can be exported afterwards:
 
@@ -168,7 +196,7 @@ In the window, press any key to go to the next image. Press Esc or Q to quit.
 
 ## Results
 
-These are the results of the reference model, tested on 23 validation photos. Speed was measured on a CPU with 8 threads, without a graphics card. Your results will depend on your photos and your hardware.
+These are the results of the included model, tested on 23 validation photos. Speed was measured on a CPU with 8 threads, without a graphics card. Results with your own photos and hardware may differ.
 
 - Input size 640: 118 ms per image (about 8 frames per second), mAP50 of 0.85
 - Input size 416: 53 ms per image (about 19 frames per second), mAP50 of 0.86
@@ -197,12 +225,13 @@ Almost all of the processing time is spent inside the neural network itself. The
 - The training scripts turn off the anonymous usage statistics that Ultralytics sends by default. This setting applies to your whole Ultralytics installation.
 - `prepare_photos.py` removes all metadata from your photos, including GPS locations.
 - The C++ application does not connect to the internet.
+- Ultralytics stores local file paths, including your user name, inside trained models. `train.py` and `export.py` remove these automatically with `sanitize_model.py`, so model files can be shared safely. The models contain only the learned weights, not the training photos.
 
 
 ## Known limitations
 
 - Only chickens as a whole are detected. Individual birds are not recognised.
-- A model only works well in surroundings similar to its training photos. A model trained in one coop may perform worse in a very different place.
+- The included model was trained in a single indoor coop, mostly in low light. It may perform worse outdoors or in very different surroundings. Training it further with your own photos solves this.
 - Chickens sitting closely together, for example on a perch, are sometimes detected as one or missed.
 - Very dark or blurry images reduce accuracy.
 - So far the project has only been tested on Windows.
@@ -227,7 +256,7 @@ If you train the detector on your own chickens, I am also happy to hear how well
 
 This project is licensed under the GNU Affero General Public License v3.0. The full text is in the LICENSE file.
 
-This license was chosen because Ultralytics YOLO, which is used for training, uses the same license. Models trained with this project are based on Ultralytics models and fall under the same terms.
+This license was chosen because Ultralytics YOLO, which is used for training, uses the same license. The included models and all models trained with this project are based on Ultralytics models and fall under the same terms.
 
 
 ## Credits
