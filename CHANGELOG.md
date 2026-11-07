@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `chicken.pt` for continuing training with your own photos (`train.py --model models\chicken.pt`)
 - `sanitize_model.py`, which removes local file paths from model files; runs automatically after training and export
 - Copyright and SPDX license headers in the C++ sources
+- `train.py` only replaces the current model if the new one is more accurate (`--force` to override)
+- Gentle fine-tuning settings when continuing training from `models/chicken.pt`
 
 ### Changed
 

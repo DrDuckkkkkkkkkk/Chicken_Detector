@@ -146,11 +146,13 @@ Some tips for good results:
 
 The first script checks every label file and stops with an error message if something is wrong. It then puts 80 percent of the images into the training set and 20 percent into the validation set. The split is the same every time you run it.
 
-The second script trains the model. When it is finished, `chicken.pt` and `chicken.onnx` in the `models` folder are replaced with the new model. Charts and example results from the training are saved in `training/runs/chicken`.
+The second script trains the model. Charts and example results from the training are saved in `training/runs/chicken`.
+
+Your current model is protected. Before training starts, the script measures the accuracy of the existing `models/chicken.pt` on the validation photos. After training, `chicken.pt` and `chicken.onnx` are only replaced if the new model is more accurate. Otherwise the new model is kept in `training/runs/chicken/weights/best.pt` and your current model stays untouched. Add `--force` to replace it anyway.
 
 There are two ways to train.
 
-Continue training the included model. This is the recommended way if you want the detector to work better with your own chickens. The model keeps what it has already learned and adapts to your photos:
+Continue training the included model. This is the recommended way if you want the detector to work better with your own chickens. The model keeps what it has already learned and adapts to your photos. A lower learning rate is used automatically, so the existing knowledge is not lost at the start of training:
 
     .venv\Scripts\python.exe training\train.py --model models\chicken.pt --epochs 100
 
@@ -160,13 +162,12 @@ Train a new model from scratch, starting from the general YOLO11 model. The base
 
 Other useful options are `--model yolo11s.pt` for a larger and more accurate, but slower model, and `--imgsz` to change the image size used for training.
 
-Tip: make a copy of the `models` folder before training, so you can go back to the previous model if the new one does not perform better.
-
-A smaller and faster model can be exported afterwards:
+Training only updates the 640 model. After a successful training run, export the smaller and faster models as well:
 
     .venv\Scripts\python.exe training\export.py --imgsz 416
+    .venv\Scripts\python.exe training\export.py --imgsz 320
 
-This creates `models/chicken_416.onnx`.
+This creates `models/chicken_416.onnx` and `models/chicken_320.onnx`.
 
 
 ## Usage
