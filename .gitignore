@@ -1,0 +1,40 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build
+build/
+out/
+.vs/
+.vscode/
+CMakeUserPresets.json
+
+# Generated training data (recreated from dataset/)
+training/split/
+training/runs/
+training/*.log
+training/train_log.txt
+runs/
+
+# Models (distributed via GitHub Releases, not in the repository)
+models/*
+!models/.gitkeep
+*.pt
+*.onnx
+
+# Detector output
+results/
+
+# Dataset: images and labels stay local, only the folder structure is tracked
+dataset/images/*
+!dataset/images/.gitkeep
+dataset/labels/*
+!dataset/labels/.gitkeep
+dataset/originals/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

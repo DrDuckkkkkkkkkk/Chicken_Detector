@@ -1,0 +1,8 @@
+# Datensatz-Beschreibung fuer Ultralytics YOLO.
+# Kein "path"-Eintrag: Ultralytics nimmt dann den Ordner dieser Datei (training/) als Basis.
+# So funktioniert es auf jedem Rechner, ohne absolute Pfade / Benutzernamen im Repository.
+train: split/images/train
+val: split/images/val
+
+names:
+  0: Chicken
