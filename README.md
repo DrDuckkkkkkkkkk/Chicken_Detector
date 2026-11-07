@@ -1,339 +1,229 @@
 # ChickenDetector
 
-ChickenDetector detects and counts chickens in images, videos and live webcam streams.
+ChickenDetector finds and counts chickens in images, videos and live webcam streams.
 
-The project covers the full pipeline: preparing and labelling a custom dataset, fine-tuning a YOLO11 model with Ultralytics, exporting it to ONNX, and running inference from a standalone C++ application built on OpenCV. The C++ application has no Python dependency and runs entirely offline.
+The project contains everything needed to go from your own photos to a working detector: scripts to prepare and label a dataset, a training pipeline based on YOLO11, and a fast C++ application that runs the trained model with OpenCV. The C++ application works without Python and does not need an internet connection.
 
-## Table of Contents
-
-- [Features](#features)
-- [Pipeline Overview](#pipeline-overview)
-- [Project Structure](#project-structure)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Dataset Preparation](#dataset-preparation)
-- [Training](#training)
-- [Usage](#usage)
-- [Performance](#performance)
-- [Implementation Details](#implementation-details)
-- [Privacy](#privacy)
-- [Limitations](#limitations)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
 
 ## Features
 
-- Detection on single images, image folders, video files and webcams
-- Bounding boxes with confidence scores and a live chicken count
-- Optional saving of annotated images and videos
-- Built-in benchmark mode
-- Multiple model sizes to trade accuracy for speed
-- Label validation and reproducible train/validation split
-- Photo preprocessing that corrects EXIF rotation and removes metadata
+- Detects chickens in single images, whole folders, video files and webcam streams
+- Draws a box with a confidence score around every chicken and shows the total count
+- Saves annotated images and videos
+- Includes a benchmark mode to measure speed
+- Supports several model sizes, so you can choose between accuracy and speed
+- Checks your labels for errors before training
+- Prepares phone photos automatically (rotation, size, removal of location data)
 
-## Pipeline Overview
 
-```
-Photos -> prepare_photos.py -> labelImg -> split_dataset.py -> train.py -> ONNX model -> ChickenDetector
-```
+## How it works
 
-| Step | Tool | Output |
-|------|------|--------|
-| 1. Preprocess photos | `prepare_photos.py` | Rotated, resized images without metadata |
-| 2. Annotate | labelImg | YOLO label files |
-| 3. Validate and split | `split_dataset.py` | Training and validation sets |
-| 4. Train | `train.py` | `chicken.pt`, `chicken.onnx` |
-| 5. Export (optional) | `export.py` | Models with smaller input sizes |
-| 6. Inference | `ChickenDetector.exe` | Detections, counts, annotated output |
+1. Phone photos are cleaned up with `prepare_photos.py`.
+2. Every chicken in the photos is marked with a box in labelImg.
+3. `split_dataset.py` checks the labels and splits the images into a training set and a validation set.
+4. `train.py` fine-tunes a pretrained YOLO11 model on these images and exports it as an ONNX file.
+5. The C++ application loads the ONNX file and detects chickens.
 
-## Project Structure
 
-```
-ChickenDetector/
-├── dataset/
-│   ├── images/              Preprocessed images (not tracked)
-│   ├── labels/              YOLO annotations, one file per image (not tracked)
-│   ├── originals/           Original photos (not tracked)
-│   └── classes.txt          Class names
-├── training/
-│   ├── prepare_photos.py    EXIF rotation, resizing, metadata removal
-│   ├── split_dataset.py     Label validation and train/val split
-│   ├── data.yaml            Ultralytics dataset configuration
-│   ├── train.py             Training and ONNX export
-│   └── export.py            ONNX export with custom input size
-├── src/
-│   ├── Detector.h           Preprocessing, inference, post-processing
-│   └── main.cpp             Command-line interface
-├── models/                  Trained models (generated, not tracked)
-├── CMakeLists.txt
-├── requirements.txt
-└── README.md
-```
+## Project layout
 
-The directories `training/split/`, `training/runs/`, `models/` and `results/` are generated during use and excluded from version control.
+    dataset/
+        images/             your prepared photos
+        labels/             one label file per photo
+        originals/          untouched original photos
+        classes.txt         list of class names
+    training/
+        prepare_photos.py   fixes rotation, resizes, removes metadata
+        split_dataset.py    checks labels, splits into training and validation
+        data.yaml           dataset settings for training
+        train.py            trains the model and exports it
+        export.py           exports the model with a different input size
+    src/
+        Detector.h          detection logic
+        main.cpp            command line application
+    models/                 trained models are saved here
+
+Images, labels, trained models and build output are not part of the repository.
+
 
 ## Requirements
 
-| Component | Version |
-|-----------|---------|
-| Operating system | Windows 10/11 (x64) |
-| Compiler | Visual Studio 2022 or newer, "Desktop development with C++" workload |
-| CMake | 3.20 or newer (included with Visual Studio) |
-| OpenCV | 4.x with the `dnn`, `highgui` and `videoio` modules (via vcpkg) |
-| Python | 3.10 or newer (training) |
-| Python | 3.9 (labelImg only, separate environment) |
+- Windows 10 or 11, 64-bit
+- Visual Studio 2022 or newer with the "Desktop development with C++" workload
+- vcpkg for installing OpenCV
+- Python 3.10 or newer for training
+- A separate Python 3.9 environment for labelImg
 
-A GPU is optional. Training uses CUDA automatically if available. All results below were produced on a CPU.
+A graphics card is not required. All results below were measured on a normal CPU. If an NVIDIA graphics card is available, training uses it automatically.
+
 
 ## Installation
 
-### 1. Clone the repository
+Clone the repository:
 
-```
-git clone https://github.com/<username>/ChickenDetector.git
-cd ChickenDetector
-```
+    git clone https://github.com/DrDuckkkkkkkkkk/Chicken_Detector.git
+    cd Chicken_Detector
 
-### 2. Install OpenCV
+Install OpenCV with vcpkg:
 
-```
-vcpkg install opencv4[dnn,highgui,ffmpeg]:x64-windows
-```
+    vcpkg install opencv4[dnn,highgui,ffmpeg]:x64-windows
 
-### 3. Set up the Python environment
+Set up Python for training:
 
-```
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+    python -m venv .venv
+    .venv\Scripts\python.exe -m pip install -r requirements.txt
 
-### 4. Build the application
+Build the application:
 
-```
-cmake -S . -B build
-cmake --build build --config Release
-```
+    cmake -S . -B build
+    cmake --build build --config Release
 
-CMake locates vcpkg via the `VCPKG_ROOT` environment variable and falls back to `%USERPROFILE%\vcpkg`. A custom location can be specified with `-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`.
+The finished program is located at `build\Release\ChickenDetector.exe`.
 
-The executable is written to `build\Release\ChickenDetector.exe`. The required OpenCV DLLs are copied to the same directory.
+CMake looks for vcpkg in the folder set in the `VCPKG_ROOT` environment variable. If that variable is not set, it uses `%USERPROFILE%\vcpkg`.
 
-## Dataset Preparation
 
-The current model was trained on 116 images with 461 annotated chickens, captured in an indoor coop under mostly low-light conditions. The dataset itself is not part of this repository. To train a model, provide your own images and annotations as described below.
+## Preparing your own dataset
 
-### Preprocessing
+The repository does not include images. To train a model, you need your own photos. The included model was trained on 116 photos with 461 chickens, taken inside a chicken coop, mostly in low light.
 
-Place the source images in `dataset/images/` and run:
+### Preparing the photos
 
-```
-.venv\Scripts\python.exe training\prepare_photos.py
-```
+Copy your photos into `dataset/images` and run:
 
-The script performs the following steps:
+    .venv\Scripts\python.exe training\prepare_photos.py
 
-1. **EXIF rotation.** Smartphone images are frequently stored in landscape orientation with an EXIF orientation tag. labelImg ignores this tag, whereas OpenCV and Ultralytics apply it, which results in misaligned annotations. The script applies the rotation to the pixel data and removes the tag.
-2. **Resizing.** Images are scaled to a maximum of 1280 px on the longest side (configurable with `--max-size`).
-3. **Metadata removal.** All metadata, including GPS coordinates, is removed.
+This step is important for photos taken with a phone. Phones often save pictures sideways and only store a note that the picture should be rotated. labelImg ignores this note, but the training does not. Without this step, the boxes you draw end up in the wrong place.
 
-Original files are moved to `dataset/originals/`. Images that already have an annotation are skipped, so the script can be run again after adding new images.
+The script also reduces the photos to a maximum of 1280 pixels and removes all metadata, including the GPS location. The original photos are moved to `dataset/originals`.
 
-### Annotation
+### Labelling
 
-Annotation is done with [labelImg](https://github.com/HumanSignal/labelImg). labelImg is not compatible with Python 3.10 or newer, so a separate environment is required:
+The photos are labelled with labelImg. labelImg only works with Python 3.9 or older, so it needs its own environment:
 
-```
-conda create -n label_env python=3.9
-conda activate label_env
-pip install labelImg
-labelImg dataset\images dataset\classes.txt dataset\labels
-```
+    conda create -n label_env python=3.9
+    conda activate label_env
+    pip install labelImg
+    labelImg dataset\images dataset\classes.txt dataset\labels
 
-Recommended settings:
+Before you start, switch the format in the left toolbar from PascalVOC to YOLO. It also helps to turn on Auto Save in the View menu and to set "Chicken" as the default label.
 
-- Set the annotation format to **YOLO** (toolbar button on the left).
-- Enable *View > Auto Save mode*.
-- Enable *Use default label* with the value `Chicken`.
+Useful keys: W draws a new box, D opens the next image, A goes back to the previous one.
 
-Annotation guidelines:
+Some tips for good results:
 
-- Annotate every visible chicken, including partially occluded and truncated ones.
-- Draw tight boxes that include the entire bird.
-- Images without chickens may be saved without boxes and serve as negative examples.
+- Mark every chicken, including chickens that are partly hidden or cut off at the edge of the picture.
+- Draw the box tightly around the whole bird.
+- Photos without any chickens are also useful. Save them without boxes.
 
-### Label format
-
-Each label file contains one line per object:
-
-```
-<class_id> <x_center> <y_center> <width> <height>
-```
-
-All coordinates are normalized to the range 0 to 1. The only class is `0` (Chicken).
 
 ## Training
 
-```
-.venv\Scripts\python.exe training\split_dataset.py
-.venv\Scripts\python.exe training\train.py
-```
+    .venv\Scripts\python.exe training\split_dataset.py
+    .venv\Scripts\python.exe training\train.py
 
-`split_dataset.py` validates all label files and aborts with a descriptive error if a file contains an invalid number of values, an unknown class, or coordinates outside the valid range. Images without a label file are excluded. The remaining images are split 80/20 into training and validation sets using a fixed seed.
+The first script checks every label file and stops with an error message if something is wrong. It then puts 80 percent of the images into the training set and 20 percent into the validation set. The split is the same every time you run it.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--val` | 0.2 | Fraction of images used for validation |
-| `--seed` | 42 | Random seed for the split |
+The second script trains the model. When it is finished, you will find two files in the `models` folder: `chicken.pt` and `chicken.onnx`. Charts and example results from the training are saved in `training/runs/chicken`.
 
-`train.py` fine-tunes a pretrained YOLO11 model and exports the best checkpoint to ONNX.
+The included model was trained with these settings:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--model` | `yolo11n.pt` | Base model (`yolo11s.pt` is more accurate but approx. 2.5x slower) |
-| `--epochs` | 100 | Maximum number of epochs |
-| `--patience` | 30 | Early stopping after this many epochs without improvement |
-| `--batch` | 8 | Batch size |
-| `--imgsz` | 640 | Input size (multiple of 32) |
+    .venv\Scripts\python.exe training\train.py --epochs 250 --patience 60 --batch 16
 
-The current model was trained with:
+Other useful options are `--model yolo11s.pt` for a larger and more accurate, but slower model, and `--imgsz` to change the image size used for training.
 
-```
-.venv\Scripts\python.exe training\train.py --epochs 250 --patience 60 --batch 16
-```
+A smaller and faster model can be exported afterwards:
 
-Outputs:
+    .venv\Scripts\python.exe training\export.py --imgsz 416
 
-- `models/chicken.pt`: PyTorch weights
-- `models/chicken.onnx`: ONNX model for the C++ application
-- `training/runs/chicken/`: training curves, confusion matrix, sample predictions and `results.csv` with per-epoch metrics
+This creates `models/chicken_416.onnx`.
 
-### Exporting smaller models
-
-```
-.venv\Scripts\python.exe training\export.py --imgsz 320
-```
-
-This produces `models/chicken_320.onnx`, which must be used with `--size 320`.
 
 ## Usage
 
-```
-ChickenDetector.exe <model.onnx> <source> [options]
-```
+    ChickenDetector.exe <model> <source> [options]
 
-`<source>` may be an image file, a directory of images, a video file, or a webcam index.
+The source can be an image, a folder with images, a video file or the number of a webcam.
 
-### Examples
+Examples:
 
-```
-build\Release\ChickenDetector.exe models\chicken_416.onnx image.jpg --size 416
-build\Release\ChickenDetector.exe models\chicken.onnx images\
-build\Release\ChickenDetector.exe models\chicken.onnx video.mp4 --out results
-build\Release\ChickenDetector.exe models\chicken_320.onnx 0 --size 320
-```
+    build\Release\ChickenDetector.exe models\chicken_416.onnx photo.jpg --size 416
+    build\Release\ChickenDetector.exe models\chicken.onnx my_photos
+    build\Release\ChickenDetector.exe models\chicken.onnx video.mp4 --out results
+    build\Release\ChickenDetector.exe models\chicken_320.onnx 0 --size 320
 
-### Options
+Options:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--conf <0..1>` | 0.25 | Minimum confidence score |
-| `--nms <0..1>` | 0.45 | IoU threshold for non-maximum suppression |
-| `--size <n>` | 640 | Model input size; must match the export size |
-| `--out <dir>` | `results` | Output directory; videos are saved only when specified |
-| `--no-show` | | Disable the display window |
-| `--bench <n>` | | Run detection n times per image and report timing |
+- `--conf` sets how confident the model must be before something counts as a chicken. The value is between 0 and 1, the default is 0.25.
+- `--nms` sets how much two boxes may overlap before one of them is removed. The default is 0.45.
+- `--size` must match the size the model was exported with. The default is 640.
+- `--out` sets the folder for the results. Images are always saved, videos only when this option is used.
+- `--no-show` runs the program without opening a window.
+- `--bench` followed by a number runs the detection that many times and prints the average time.
 
-### Controls
+In the window, press any key to go to the next image. Press Esc or Q to quit.
 
-| Key | Action |
-|-----|--------|
-| Any key | Next image |
-| `Esc` / `Q` | Exit |
 
-### Exit codes
+## Results
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Runtime error (missing file, unreadable source, model error) |
-| 2 | Invalid command-line arguments |
+The included model was tested on 23 validation photos. Speed was measured on a CPU with 8 threads, without a graphics card.
 
-## Performance
+- Input size 640: 118 ms per image (about 8 frames per second), mAP50 of 0.85
+- Input size 416: 53 ms per image (about 19 frames per second), mAP50 of 0.86
+- Input size 320: 33 ms per image (about 30 frames per second), mAP50 of 0.79
 
-Accuracy was measured on the 23 validation images. Inference time was measured on an 8-thread CPU without GPU acceleration, averaged over 100 runs (`--bench 100`).
+mAP50 is a common measure of detection accuracy. A value of 1.0 would mean every chicken is found with no false detections.
 
-| Model | Input size | Inference time | FPS | mAP50 | mAP50-95 |
-|-------|------------|----------------|-----|-------|----------|
-| `chicken.onnx` | 640 | 118 ms | 8.5 | 0.848 | 0.503 |
-| `chicken_416.onnx` | 416 | 53 ms | 19 | 0.863 | 0.517 |
-| `chicken_320.onnx` | 320 | 33 ms | 30 | 0.790 | 0.457 |
+The 416 model is the best choice for most uses. On this dataset it is even slightly more accurate than the 640 model and more than twice as fast. The 320 model is recommended for webcam use when a smooth picture matters most.
 
-The 416 model offers the best overall trade-off and is the recommended default. On this dataset it is slightly more accurate than the 640 model while running more than twice as fast. The 320 model is suited for real-time webcam use where frame rate takes priority.
 
-Training stopped early after 146 of 250 epochs; the best checkpoint was reached at epoch 86 (approx. 1.3 hours on CPU).
+## Technical notes
 
-Profiling shows that nearly all processing time is spent in the neural network. Pre- and post-processing are negligible, so reducing the input size is the most effective way to improve throughput.
+Before detection, every image is scaled to the input size of the model without distorting it. The free space is filled with gray. This is exactly how the images were prepared during training.
 
-## Implementation Details
+The model returns 8400 possible boxes per image. The program first looks only at the confidence score of each box and only calculates the position for the few boxes above the threshold. Boxes that overlap too much are then removed.
 
-### Preprocessing
+All memory needed for detection is reserved once and reused for every frame. This keeps the program fast and stable during long video or webcam sessions.
 
-Each frame is letterboxed: scaled to fit the model input while preserving its aspect ratio and padded with gray (value 114). This matches the preprocessing used by Ultralytics during training. Pixel values are normalized to 0 to 1 and converted from BGR to RGB.
+When using a webcam, a separate thread reads the camera images. The detector always works on the newest image. If detection is slower than the camera, older images are skipped. This way the picture never falls behind. Video files are processed completely, frame by frame.
 
-### Post-processing
+Almost all of the processing time is spent inside the neural network itself. The quickest way to make detection faster is therefore to use a smaller input size.
 
-YOLO11 produces 8400 candidate boxes per image. The decoder reads the output tensor directly and evaluates the confidence score first. Box coordinates are computed and mapped back to the original image only for candidates above the threshold. Overlapping boxes are then removed with non-maximum suppression.
-
-Both standard (`[1, 4+C, N]`) and transposed (`[1, N, 4+C]`) output layouts are supported.
-
-### Memory and allocation
-
-All intermediate buffers (letterbox image, input blob, network output, candidate lists) are members of the `Detector` class and are reused across frames, so no memory is allocated per frame in steady state. Resource management relies exclusively on RAII; the code contains no manual `new` or `delete`.
-
-### Warm-up
-
-The constructor performs one inference on a blank image. This avoids the significantly higher latency of the first inference call in OpenCV DNN.
-
-### Webcam capture
-
-A dedicated capture thread continuously reads frames, and the detector always processes the most recent one. If inference is slower than the camera frame rate, older frames are discarded instead of being queued, which keeps latency constant. Video files are processed frame by frame without dropping frames.
-
-### Error handling
-
-Invalid arguments, missing files, unreadable sources and a mismatch between `--size` and the model's input size are reported with descriptive messages instead of unhandled exceptions.
 
 ## Privacy
 
-- Ultralytics collects anonymous usage data by default. `train.py` and `export.py` disable this via the Ultralytics settings (`sync: False`). This change applies to the global Ultralytics configuration.
-- `prepare_photos.py` removes all EXIF metadata, including GPS location data.
-- The C++ application does not establish any network connections.
-- `data.yaml` uses relative paths, so no local user paths are stored in the repository.
+- The training scripts turn off the anonymous usage statistics that Ultralytics sends by default. This setting applies to your whole Ultralytics installation.
+- `prepare_photos.py` removes all metadata from your photos, including GPS locations.
+- The C++ application does not connect to the internet.
 
-## Limitations
 
-- Single class only; individual chickens are not distinguished.
-- The training data originates from a single coop. Performance in substantially different environments may be lower.
-- Densely grouped chickens, for example on a perch, may be merged into one detection or missed.
-- Detection quality decreases in very dark or motion-blurred images.
-- Currently tested on Windows only.
+## Known limitations
 
-## Roadmap
+- Only chickens as a whole are detected. Individual birds are not recognised.
+- The included model was trained in a single chicken coop and may work less well in very different surroundings.
+- Chickens sitting closely together, for example on a perch, are sometimes detected as one or missed.
+- Very dark or blurry images reduce accuracy.
+- So far the project has only been tested on Windows.
 
-- [ ] Extend the dataset with daylight and outdoor images
-- [ ] Evaluate ONNX Runtime as an inference backend (approx. 1.7x faster in initial tests)
-- [ ] Time-series logging of chicken counts
-- [ ] Linux and Raspberry Pi support
-- [ ] Publish trained models as GitHub releases
+
+## Planned improvements
+
+- More photos, especially in daylight and outdoors
+- Faster detection with ONNX Runtime
+- Logging the number of chickens over time
+- Support for Linux and Raspberry Pi
+- Trained models available for download
+
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for the full text.
+This project is licensed under the GNU Affero General Public License v3.0. The full text is in the LICENSE file.
 
-The license was chosen for consistency with [Ultralytics YOLO](https://github.com/ultralytics/ultralytics/blob/main/LICENSE), which is also licensed under AGPL-3.0. Models trained with this project are derived from Ultralytics weights and are subject to the same terms.
+This license was chosen because Ultralytics YOLO, which is used for training, uses the same license. Models trained with this project are based on Ultralytics models and fall under the same terms.
 
-## Acknowledgements
 
-- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics): model architecture and training framework
-- [OpenCV](https://opencv.org/): image processing and DNN inference
-- [labelImg](https://github.com/HumanSignal/labelImg): annotation tool
+## Credits
+
+- Ultralytics YOLO for the model and the training framework
+- OpenCV for image processing and running the model
+- labelImg for labelling the images
