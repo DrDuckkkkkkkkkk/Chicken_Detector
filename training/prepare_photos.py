@@ -1,16 +1,17 @@
-"""Bereitet eigene Handyfotos fuers Labeln und Training vor.
+"""Prepare photos for labelling and training.
 
-Was passiert:
-  1. EXIF-Drehung wird fest ins Bild eingerechnet. labelImg ignoriert die Markierung,
-     OpenCV/Ultralytics beachten sie -> ohne diesen Schritt passen die Labels nicht.
-  2. Bild wird auf maximal --max-size Pixel (laengste Seite) verkleinert.
-  3. Alle Metadaten (GPS, Kamera, Datum, ...) werden entfernt.
-  4. Ergebnis wird als JPG gespeichert.
+For every image in dataset/images:
 
-Die Originale werden nach dataset/originals/ verschoben (nicht im Repository).
+    1. Apply the EXIF orientation to the pixel data. labelImg ignores the orientation tag
+       while OpenCV and Ultralytics apply it, which would misalign the labels.
+    2. Resize so that the longest side is at most --max-size pixels.
+    3. Remove all metadata, including GPS coordinates.
 
-Aufruf (aus dem Projektordner):
-    .venv\\Scripts\\python.exe training\\prepare_photos.py [--max-size 1280]
+The original files are moved to dataset/originals. Images that already have a label file
+are skipped.
+
+Usage:
+    python training/prepare_photos.py [--max-size 1280]
 """
 from __future__ import annotations
 
@@ -25,46 +26,39 @@ ROOT = Path(__file__).resolve().parent.parent
 IMAGES = ROOT / "dataset" / "images"
 LABELS = ROOT / "dataset" / "labels"
 ORIGINALS = ROOT / "dataset" / "originals"
-EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--max-size", type=int, default=1280, help="laengste Bildseite in Pixel")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description="Prepare photos for labelling and training.")
+    parser.add_argument("--max-size", type=int, default=1280, help="maximum length of the longest side in pixels")
+    args = parser.parse_args()
 
     IMAGES.mkdir(parents=True, exist_ok=True)
     ORIGINALS.mkdir(parents=True, exist_ok=True)
-    files = sorted(p for p in IMAGES.iterdir() if p.suffix.lower() in EXTS)
-    if not files:
-        print(f"Keine Bilder gefunden. Fotos nach {IMAGES} kopieren und erneut ausfuehren.")
-        return 1
-    done = skipped = 0
 
+    files = sorted(p for p in IMAGES.iterdir() if p.suffix.lower() in IMAGE_EXTS)
+    if not files:
+        print(f"No images found. Copy your photos to {IMAGES} and run this script again.")
+        return 1
+
+    processed = skipped = 0
     for src in files:
-        backup = ORIGINALS / src.name
-        if backup.exists():
-            skipped += 1  # wurde schon verarbeitet
-            continue
-        if (LABELS / f"{src.stem}.txt").exists():
-            # Schon gelabelt: Drehen/Verkleinern wuerde nichts kaputtmachen (Labels sind relativ),
-            # aber eine Drehung schon. Sicherheitshalber nicht anfassen.
-            print(f"Uebersprungen (hat schon ein Label): {src.name}")
+        if (ORIGINALS / src.name).exists() or (LABELS / f"{src.stem}.txt").exists():
             skipped += 1
             continue
 
         with Image.open(src) as im:
-            im = ImageOps.exif_transpose(im)  # Drehung anwenden, Orientation-Tag entfernen
-            im = im.convert("RGB")
+            im = ImageOps.exif_transpose(im).convert("RGB")
             im.thumbnail((args.max_size, args.max_size), Image.LANCZOS)
             tmp = src.with_suffix(".tmp.jpg")
-            im.save(tmp, "JPEG", quality=92, optimize=True)  # ohne exif= -> keine Metadaten
+            im.save(tmp, "JPEG", quality=92, optimize=True)  # saved without EXIF data
 
-        shutil.move(src, backup)
+        shutil.move(src, ORIGINALS / src.name)
         tmp.rename(IMAGES / f"{src.stem}.jpg")
-        done += 1
+        processed += 1
 
-    print(f"Fertig: {done} Bilder aufbereitet, {skipped} uebersprungen. Originale in {ORIGINALS}")
+    print(f"Processed {processed} image(s), skipped {skipped}. Originals moved to {ORIGINALS}")
     return 0
 
 

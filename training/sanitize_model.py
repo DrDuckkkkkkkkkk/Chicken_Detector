@@ -1,14 +1,15 @@
-"""Entfernt persoenliche Daten aus Modelldateien, bevor sie veroeffentlicht werden.
+"""Remove local file paths and training state from model files before sharing them.
 
-Ultralytics schreibt beim Training automatisch absolute Pfade (inkl. Windows-Benutzername),
-Git-Informationen und den Optimizer-Zustand in die Modelldateien. Dieses Skript entfernt das:
+Ultralytics stores absolute paths (including the user name), git information and the
+optimizer state inside trained models. This script removes them:
 
-  .pt    Optimizer, EMA, Git-Infos und Pfade werden entfernt (Datei wird auch kleiner).
-         Die Gewichte bleiben vollstaendig -> zum Erkennen und Weitertrainieren geeignet.
-  .onnx  Pfade in den Metadaten werden entfernt.
+    .pt     drops optimizer, EMA, git info and absolute paths; weights are kept, so the
+            model can still be used for inference and further training
+    .onnx   replaces paths in the metadata
 
-Wird von train.py und export.py automatisch aufgerufen. Manuell:
-    .venv\\Scripts\\python.exe training\\sanitize_model.py models\\chicken.pt models\\chicken.onnx
+train.py and export.py call this automatically. Manual use:
+
+    python training/sanitize_model.py models/chicken.pt models/chicken.onnx
 """
 from __future__ import annotations
 
@@ -16,13 +17,14 @@ import re
 import sys
 from pathlib import Path
 
-# Absolute Windows- oder Unix-Pfade erkennen
-_ABS_PATH = re.compile(r"([A-Za-z]:[\\/]|\\\\|/(home|Users|root)/)")
+# Matches absolute paths such as C:\Users\..., C:/Users/..., /home/... but not URLs (https://).
+_ABS_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/](?![\\/])[^'\",}]*|(?<![A-Za-z0-9:/])/(?:home|Users|root)/[^'\",}]*")
+_LEAK_MARKERS = (b":\\Users\\", b":/Users/", b"\\\\Users\\\\", b"/home/")
 
 
-def _clean_value(value):
-    """Ersetzt absolute Pfade durch den reinen Datei-/Ordnernamen."""
-    if isinstance(value, str) and _ABS_PATH.match(value):
+def _strip_path(value):
+    """Reduce an absolute path to its final component, leave everything else untouched."""
+    if isinstance(value, str) and _ABS_PATH.fullmatch(value):
         return Path(value.replace("\\", "/")).name
     return value
 
@@ -32,24 +34,22 @@ def sanitize_pt(path: Path) -> None:
 
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     if ckpt.get("ema") is not None:
-        ckpt["model"] = ckpt["ema"]  # EMA-Gewichte sind die besten, wie bei Ultralytics strip_optimizer
+        ckpt["model"] = ckpt["ema"]
     for key in ("ema", "optimizer", "updates", "scaler", "git", "train_results"):
         ckpt.pop(key, None)
-    ckpt["epoch"] = -1  # markiert "fertig trainiert" -> Weitertrainieren startet sauber neu
+    ckpt["epoch"] = -1  # marks the training as finished
 
     if isinstance(ckpt.get("train_args"), dict):
-        ckpt["train_args"] = {k: _clean_value(v) for k, v in ckpt["train_args"].items()}
+        ckpt["train_args"] = {k: _strip_path(v) for k, v in ckpt["train_args"].items()}
 
-    model = ckpt["model"]
-    model.half()  # fp16 wie bei Ultralytics-Releases, halbiert die Groesse
+    model = ckpt["model"].half()
     for p in model.parameters():
         p.requires_grad = False
-    if hasattr(model, "args") and isinstance(model.args, dict):
-        model.args = {k: _clean_value(v) for k, v in model.args.items()}
-    # Ultralytics merkt sich am Modell, aus welcher Datei es geladen wurde
+    if isinstance(getattr(model, "args", None), dict):
+        model.args = {k: _strip_path(v) for k, v in model.args.items()}
     for attr in ("pt_path", "yaml_file"):
         if isinstance(getattr(model, attr, None), str):
-            setattr(model, attr, _clean_value(getattr(model, attr)))
+            setattr(model, attr, _strip_path(getattr(model, attr)))
 
     torch.save(ckpt, path)
 
@@ -61,26 +61,26 @@ def sanitize_onnx(path: Path) -> None:
     for prop in model.metadata_props:
         if prop.key == "description":
             prop.value = "Ultralytics YOLO11 chicken detection model"
-        elif _ABS_PATH.search(prop.value):
-            prop.value = re.sub(r"[A-Za-z]:[\\/][^'\",}]*|/(home|Users|root)/[^'\",}]*", "", prop.value)
+        else:
+            prop.value = _ABS_PATH.sub("", prop.value)
     onnx.save(model, str(path))
 
 
-def check_clean(path: Path) -> bool:
+def is_clean(path: Path) -> bool:
     data = path.read_bytes()
-    markers = [b":\\Users\\", b":/Users/", b"\\\\Users\\\\"]
-    return not any(m in data for m in markers)
+    return not any(marker in data for marker in _LEAK_MARKERS)
 
 
 def sanitize(path: Path) -> None:
+    path = Path(path)
     if path.suffix == ".pt":
         sanitize_pt(path)
     elif path.suffix == ".onnx":
         sanitize_onnx(path)
     else:
-        raise ValueError(f"Unbekannter Dateityp: {path}")
-    if not check_clean(path):
-        raise RuntimeError(f"{path.name} enthaelt nach der Bereinigung noch lokale Pfade")
+        raise ValueError(f"Unsupported file type: {path}")
+    if not is_clean(path):
+        raise RuntimeError(f"{path.name} still contains local paths after sanitizing")
 
 
 def main(argv: list[str]) -> int:
@@ -88,9 +88,8 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 1
     for arg in argv:
-        p = Path(arg)
-        sanitize(p)
-        print(f"Bereinigt: {p}")
+        sanitize(Path(arg))
+        print(f"Sanitized {arg}")
     return 0
 
 

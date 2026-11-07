@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Trained chicken models in `models/` (input sizes 640, 416 and 320), ready to use without training
 - `chicken.pt` for continuing training with your own photos (`train.py --model models\chicken.pt`)
 - `sanitize_model.py`, which removes local file paths from model files; runs automatically after training and export
+- Copyright and SPDX license headers in the C++ sources
+
+### Changed
+
+- All program output, labels and source code comments are now in English
+- `prepare_photos.py` silently skips images that are already labelled
 
 ## [1.0.0] - 2026-11-07
 

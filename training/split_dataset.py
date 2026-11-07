@@ -1,11 +1,11 @@
-"""Prueft die Labels in dataset/ und teilt den Datensatz in Train / Val auf (Standard 80 / 20).
+"""Validate the labels in dataset/ and split the data into training and validation sets.
 
-Ergebnis (Ultralytics-Format, Labels werden ueber /images/ -> /labels/ gefunden):
+Output (Ultralytics layout):
     training/split/images/{train,val}
     training/split/labels/{train,val}
 
-Aufruf (aus dem Projektordner):
-    .venv\\Scripts\\python.exe training\\split_dataset.py [--val 0.2] [--seed 42]
+Usage:
+    python training/split_dataset.py [--val 0.2] [--seed 42]
 """
 from __future__ import annotations
 
@@ -24,35 +24,35 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 def validate_label(path: Path, num_classes: int) -> list[str]:
-    """Gibt eine Liste von Fehlermeldungen zurueck (leer = Label ist in Ordnung)."""
+    """Return a list of problems found in a YOLO label file."""
     errors = []
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
         parts = line.split()
         if len(parts) != 5:
-            errors.append(f"{path.name}:{n}: erwartet 5 Werte, gefunden {len(parts)}")
+            errors.append(f"{path.name}:{n}: expected 5 values, found {len(parts)}")
             continue
         try:
             cls = int(parts[0])
             x, y, w, h = map(float, parts[1:])
         except ValueError:
-            errors.append(f"{path.name}:{n}: keine gueltigen Zahlen")
+            errors.append(f"{path.name}:{n}: values are not valid numbers")
             continue
         if not 0 <= cls < num_classes:
-            errors.append(f"{path.name}:{n}: Klasse {cls} existiert nicht")
+            errors.append(f"{path.name}:{n}: unknown class {cls}")
         if not all(0.0 <= v <= 1.0 for v in (x, y, w, h)) or w == 0 or h == 0:
-            errors.append(f"{path.name}:{n}: Koordinaten muessen zwischen 0 und 1 liegen (und w,h > 0)")
+            errors.append(f"{path.name}:{n}: coordinates must be between 0 and 1 and width/height must be > 0")
     return errors
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--val", type=float, default=0.2, help="Anteil Validierungsbilder (0..1)")
-    ap.add_argument("--seed", type=int, default=42, help="Zufalls-Seed (gleicher Seed = gleiche Aufteilung)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(description="Validate labels and split the dataset.")
+    parser.add_argument("--val", type=float, default=0.2, help="fraction of images used for validation")
+    parser.add_argument("--seed", type=int, default=42, help="random seed for a reproducible split")
+    args = parser.parse_args()
     if not 0 < args.val < 1:
-        ap.error("--val muss zwischen 0 und 1 liegen")
+        parser.error("--val must be between 0 and 1")
 
     num_classes = len([c for c in CLASSES_FILE.read_text(encoding="utf-8").splitlines() if c.strip()])
     images = sorted(p for p in SRC_IMAGES.iterdir() if p.suffix.lower() in IMAGE_EXTS)
@@ -60,33 +60,32 @@ def main() -> int:
     labeled, unlabeled, errors = [], [], []
     for img in images:
         label = SRC_LABELS / f"{img.stem}.txt"
-        if not label.exists():
+        if label.exists():
+            errors += validate_label(label, num_classes)
+            labeled.append(img)
+        else:
             unlabeled.append(img)
-            continue
-        errors += validate_label(label, num_classes)
-        labeled.append(img)
 
     if errors:
-        print("FEHLER in den Labels - bitte korrigieren:")
+        print("Invalid labels found:")
         for e in errors:
-            print("  -", e)
+            print(f"  {e}")
         return 1
 
+    # Unlabeled images would be treated as "no chicken here", so they are left out.
     if unlabeled:
-        # Bilder ohne Label wuerden als "hier ist kein Huhn" gelernt -> falsch, also weglassen.
-        print("WARNUNG: Diese Bilder haben kein Label und werden uebersprungen:")
+        print(f"Skipping {len(unlabeled)} image(s) without a label file:")
         for img in unlabeled:
-            print("  -", img.name)
+            print(f"  {img.name}")
 
     if len(labeled) < 2:
-        print("Zu wenige gelabelte Bilder.")
+        print("At least two labeled images are required.")
         return 1
 
     random.Random(args.seed).shuffle(labeled)
     n_val = max(1, round(len(labeled) * args.val))
     splits = {"val": labeled[:n_val], "train": labeled[n_val:]}
 
-    # Alten Split loeschen, damit keine veralteten Dateien (und Ultralytics-*.cache) uebrig bleiben
     if OUT.exists():
         shutil.rmtree(OUT)
 
@@ -99,7 +98,7 @@ def main() -> int:
             shutil.copy2(img, img_dir / img.name)
             shutil.copy2(SRC_LABELS / f"{img.stem}.txt", lbl_dir / f"{img.stem}.txt")
 
-    print(f"Fertig: {len(splits['train'])} Train / {len(splits['val'])} Val -> {OUT}")
+    print(f"Done: {len(splits['train'])} training / {len(splits['val'])} validation images in {OUT}")
     return 0
 
 
